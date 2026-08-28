@@ -1,0 +1,69 @@
+@import "tailwindcss";
+@import "@hospital-carlos-cisterna-calama/tokens/theme.css";
+/* Inter self-hosteada (Google Fonts bloqueado en la LAN del hospital). Variable
+   font: un solo import cubre todos los pesos. Registra la familia "Inter
+   Variable"; el body la encabeza y cae al token del DS (--hcc-font-sans). */
+@import "@fontsource-variable/inter";
+
+/* Estilos base del CDK overlay: posicionan los paneles flotantes del DS
+   (hcc-select, hcc-date-input, hcc-menu, …) — container fixed + z-index.
+   Preventivo en la plantilla: el primer sistema que agregue un componente de
+   overlay lo necesita sí o sí (sin esto el panel no se posiciona). */
+@import "@angular/cdk/overlay-prebuilt.css";
+
+/* Componentes del DS (@hospital-carlos-cisterna-calama/ui): sus templates viven
+   en node_modules (que Tailwind NO escanea por defecto) y usan utilidades que
+   la app puede no usar en su propio código (text-primary-foreground, bg-danger,
+   border-success, z-(--hcc-z-toast), …). Sin este @source, esas clases no se
+   generan y los componentes del DS se renderizan sin estilos. */
+@source "../node_modules/@hospital-carlos-cisterna-calama/ui";
+
+/* ============================================
+   Global Styles — urgenciav2 Frontend
+   ============================================ */
+
+/* Design tokens — puente al DS (@hospital-carlos-cisterna-calama/tokens).
+   Cada --color-* deriva de su --hcc-* equivalente: un solo origen de verdad.
+   El flip claro/oscuro lo aplica el DS (las --hcc-* cambian bajo .dark), por
+   eso ya no existe el bloque .dark local; y el @custom-variant dark también lo
+   provee el DS (idéntico selector), por lo que se elimina para no duplicarlo. */
+:root {
+  --color-primary: var(--hcc-primary);
+  --color-primary-dark: var(--hcc-primary-dark);
+  --color-primary-light: var(--hcc-primary-light);
+  --color-accent: var(--hcc-accent);
+  --color-success: var(--hcc-success);
+  --color-warning: var(--hcc-warning);
+  --color-danger: var(--hcc-danger);
+  --color-background: var(--hcc-background);
+  --color-surface: var(--hcc-surface);
+  --color-text: var(--hcc-text);
+  --color-text-muted: var(--hcc-text-muted);
+  --radius: var(--hcc-radius);
+  /* Sin equivalente puenteado aquí: se mantienen locales. El DS expone
+     --hcc-transition-fast/-normal idénticos; se podrían puentear en un
+     follow-up si se quiere centralizar también las transiciones. */
+  --transition-fast: 150ms ease-in-out;
+  --transition-normal: 300ms ease-in-out;
+}
+
+/* Global resets */
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Inter Variable', var(--hcc-font-sans);
+  background-color: var(--color-background);
+  color: var(--color-text);
+  min-height: 100dvh;
+  transition: background-color 200ms ease-in-out, color 200ms ease-in-out;
+}
+
+/* Focus visible outline (a11y) */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

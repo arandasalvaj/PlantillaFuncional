@@ -1,0 +1,163 @@
+<header class="bg-white dark:bg-slate-900 shadow-lg dark:shadow-slate-950/50 border-b-4 border-teal-500 dark:border-teal-400 sticky top-0 z-50 transition-[shadow,background-color] duration-300" [class.shadow-xl]="scrolled()">
+  <div class="mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <div class="flex h-16 sm:h-20 items-center justify-between gap-6 lg:gap-8">
+
+      <!-- Logo y título -->
+      <div class="flex items-center space-x-2 sm:space-x-3 cursor-pointer shrink-0" routerLink="/" (click)="closeMobile()">
+        <div class="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-linear-to-br from-teal-500 to-teal-700 dark:from-teal-400 dark:to-teal-600">
+          <svg lucideIcon [lucideIcon]="'dollar-sign'" class="h-6 w-6 text-white"></svg>
+        </div>
+        <div class="hidden xl:block">
+          <h1 class="text-xl xl:text-2xl font-bold bg-linear-to-r from-teal-600 to-teal-800 dark:from-teal-300 dark:to-teal-500 bg-clip-text text-transparent">urgenciav2</h1>
+          <p class="text-xs xl:text-sm text-gray-600 dark:text-slate-400 font-medium">Hospital Carlos Cisterna de Calama</p>
+        </div>
+        <div class="hidden sm:block xl:hidden">
+          <h1 class="text-lg sm:text-xl font-bold bg-linear-to-r from-teal-600 to-teal-800 dark:from-teal-300 dark:to-teal-500 bg-clip-text text-transparent">urgenciav2</h1>
+          <p class="text-xs text-gray-600 dark:text-slate-400 font-medium">HCC Calama</p>
+        </div>
+        <div class="sm:hidden">
+          <h1 class="text-base font-bold bg-linear-to-r from-teal-600 to-teal-800 dark:from-teal-300 dark:to-teal-500 bg-clip-text text-transparent">urgenciav2</h1>
+        </div>
+      </div>
+
+      <!-- Navegación Desktop -->
+      <nav class="hidden lg:flex flex-1 items-center justify-center gap-3 xl:gap-4 max-w-2xl mx-8">
+        @for (link of navLinks; track link.path) {
+          <a
+            [routerLink]="link.path"
+            routerLinkActive="bg-teal-700 dark:bg-teal-600 text-white shadow-md"
+            [routerLinkActiveOptions]="{ exact: false }"
+            class="flex-1 max-w-50 px-5 xl:px-7 py-2.5 rounded-md text-sm font-medium text-teal-800 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-slate-800 hover:text-teal-900 dark:hover:text-teal-200 flex items-center justify-center gap-2 transition-all duration-200"
+          >
+            <svg lucideIcon [lucideIcon]="link.iconName" class="h-4 w-4"></svg>
+            <span>{{ link.label }}</span>
+          </a>
+        }
+      </nav>
+
+      <!-- Acciones Desktop: tema + usuario + logout -->
+      <div class="hidden lg:flex items-center gap-3 xl:gap-4 shrink-0">
+        <!-- Toggle tema · Prueba DS Fase A: fondo migrado a la utilidad semántica bg-surface (auto-dark del DS, sin dark:) -->
+        <button
+          type="button"
+          (click)="themeService.toggle()"
+          class="inline-flex items-center justify-center p-2.5 rounded-lg border-2 border-gray-300 dark:border-slate-600 bg-surface text-gray-700 dark:text-slate-300 hover:border-teal-400 dark:hover:border-teal-500 hover:bg-teal-50 dark:hover:bg-slate-700 hover:text-teal-700 dark:hover:text-teal-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1 dark:focus:ring-offset-slate-900 transition-all duration-200 active:scale-95"
+          [title]="themeService.isDark() ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
+        >
+          <svg lucideIcon [lucideIcon]="themeService.isDark() ? 'sun' : 'moon'" class="h-5 w-5"></svg>
+        </button>
+
+        @if (isLoggedIn() && userData()) {
+          <div class="text-right">
+            <p class="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate max-w-75">{{ userData()!.name }}</p>
+            <div class="text-xs text-teal-800 dark:text-teal-400 font-medium flex flex-col">
+              <span class="truncate max-w-75">{{ userData()!.role }}@if (userData()!.service) {<span class="text-gray-500 dark:text-slate-500"> / {{ userData()!.service }}</span>}</span>
+              @if (userData()!.profession) {<span class="text-gray-600 dark:text-slate-400 truncate max-w-75">{{ userData()!.profession }}</span>}
+            </div>
+          </div>
+          <div class="h-10 w-10 rounded-full bg-linear-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-lg ring-2 ring-white dark:ring-slate-800">
+            <svg lucideIcon [lucideIcon]="'user-round'" class="h-5 w-5 text-white"></svg>
+          </div>
+          <button
+            type="button"
+            (click)="logout()"
+            class="inline-flex items-center justify-center p-2.5 rounded-lg border-2 border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-700 dark:hover:text-red-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:focus:ring-offset-slate-900 transition-all duration-200 active:scale-95"
+            title="Cerrar sesión"
+          >
+            <svg lucideIcon [lucideIcon]="'log-out'" class="h-5 w-5"></svg>
+          </button>
+        } @else {
+          <div class="text-right">
+            <p class="text-sm font-semibold text-gray-900 dark:text-slate-100">Cargando...</p>
+            <p class="text-xs text-teal-800 dark:text-teal-400 font-medium">Usuario</p>
+          </div>
+          <div class="h-10 w-10 rounded-full bg-linear-to-br from-gray-400 to-gray-600 flex items-center justify-center shadow-lg ring-2 ring-white dark:ring-slate-800">
+            <svg lucideIcon [lucideIcon]="'user-round'" class="h-5 w-5 text-white"></svg>
+          </div>
+        }
+      </div>
+
+      <!-- Botones móvil: tema + menú -->
+      <div class="lg:hidden flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          (click)="themeService.toggle()"
+          class="inline-flex items-center justify-center p-2 rounded-lg text-gray-600 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-slate-800 transition-colors duration-200"
+          [attr.aria-label]="themeService.isDark() ? 'Modo claro' : 'Modo oscuro'"
+        >
+          <svg lucideIcon [lucideIcon]="themeService.isDark() ? 'sun' : 'moon'" class="h-5 w-5"></svg>
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center justify-center p-2 rounded-lg text-gray-600 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-slate-800 transition-colors duration-200"
+          (click)="toggleMobile()"
+          [attr.aria-label]="mobileOpen() ? 'Cerrar menú' : 'Abrir menú'"
+        >
+          <svg lucideIcon [lucideIcon]="mobileOpen() ? 'x' : 'menu'" class="h-6 w-6"></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Menú móvil -->
+  <div
+    class="lg:hidden bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 shadow-lg overflow-hidden transition-all duration-300 ease-in-out"
+    [class.max-h-0]="!mobileOpen()"
+    [class.max-h-screen]="mobileOpen()"
+  >
+    @if (mobileOpen()) {
+      <div class="px-4 pt-2 pb-3 space-y-1">
+        <!-- Perfil de usuario móvil -->
+        <div class="px-3 py-4 border-b border-gray-200 dark:border-slate-700 mb-3 bg-linear-to-r from-teal-50 to-white dark:from-slate-800 dark:to-slate-900 rounded-lg">
+          @if (isLoggedIn() && userData()) {
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-center space-x-3 flex-1 min-w-0">
+                <div class="h-10 w-10 shrink-0 rounded-full bg-linear-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-lg">
+                  <svg lucideIcon [lucideIcon]="'user-round'" class="h-5 w-5 text-white"></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{{ userData()!.name }}</p>
+                  <p class="text-xs text-teal-800 dark:text-teal-400 font-medium truncate">{{ userData()!.role }}</p>
+                  @if (userData()!.profession) {<p class="text-xs text-gray-600 dark:text-slate-400 truncate">{{ userData()!.profession }}</p>}
+                  @if (userData()!.service) {<p class="text-xs text-gray-500 dark:text-slate-500 truncate">{{ userData()!.service }}</p>}
+                </div>
+              </div>
+              <button
+                type="button"
+                (click)="logout()"
+                class="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 text-xs font-medium hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-700 dark:hover:text-red-400 transition-all duration-200 group"
+              >
+                <svg lucideIcon [lucideIcon]="'log-out'" class="h-3.5 w-3.5 group-hover:text-red-600 dark:group-hover:text-red-400"></svg>
+                <span>Salir</span>
+              </button>
+            </div>
+          } @else {
+            <div class="flex items-center space-x-3">
+              <div class="h-10 w-10 shrink-0 rounded-full bg-linear-to-br from-gray-400 to-gray-600 flex items-center justify-center shadow-lg">
+                <svg lucideIcon [lucideIcon]="'user-round'" class="h-5 w-5 text-white"></svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">Cargando usuario...</p>
+                <p class="text-xs text-gray-500 dark:text-slate-500">Verificando acceso</p>
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Enlaces de navegación móvil -->
+        @for (link of navLinks; track link.path) {
+          <a
+            [routerLink]="link.path"
+            (click)="closeMobile()"
+            routerLinkActive="bg-teal-700 dark:bg-teal-600 text-white"
+            [routerLinkActiveOptions]="{ exact: false }"
+            class="flex items-center space-x-3 px-3 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-slate-300 hover:text-teal-800 dark:hover:text-teal-300 hover:bg-teal-50 dark:hover:bg-slate-800 transition-colors duration-200"
+          >
+            <svg lucideIcon [lucideIcon]="link.iconName" class="h-5 w-5 shrink-0"></svg>
+            <span>{{ link.label }}</span>
+          </a>
+        }
+      </div>
+    }
+  </div>
+</header>

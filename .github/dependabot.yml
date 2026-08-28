@@ -1,0 +1,47 @@
+# ============================================================================
+# Dependabot — mantiene la plantilla (y los sistemas nacidos de ella) al día.
+# Los PRs de deps entran a `desarrollo` como cualquier feature (squash, sin
+# bump) y viajan a Produccion en la promoción normal.
+#
+# En la PLANTILLA los PRs apuntan a main (no hay desarrollo acá).
+# ============================================================================
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /Backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      deps-menores:
+        update-types: [minor, patch]
+    ignore:
+      # kysely pineado EXACTO en 0.28.x: 0.29+ es ESM-only y rompe el backend
+      # CJS (probado y revertido 17-jul-2026). Solo patches.
+      - dependency-name: kysely
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
+      # tedious: subir de major solo tras smoke contra la BD real (pnpm dev).
+      - dependency-name: tedious
+        update-types: ['version-update:semver-major']
+      # @types/node debe calzar con el runtime (node 22) — majors jamás solos.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: npm
+    directory: /Frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      deps-menores:
+        update-types: [minor, patch]
+    ignore:
+      # Angular 22 exige Node >=22.22.3 (bloqueado hoy). SACAR este candado
+      # al actualizar Node y ahí aceptar el major con `ng update`.
+      - dependency-name: '@angular/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@angular-devkit/*'
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

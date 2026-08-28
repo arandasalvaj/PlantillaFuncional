@@ -1,0 +1,119 @@
+# ============================================================================
+# urgenciav2 — PRODUCCIÓN (namespace default)
+# Imagen ÚNICA (Express /api + SPA). Reemplazar urgenciav2 en todo el
+# repo antes del primer deploy.
+#
+# APLICAR UNA SOLA VEZ (bootstrap): después el CI maneja la imagen — un
+# re-apply la pisa con el placeholder v0.0.0. Cambios de env posteriores:
+# kubectl set env, o el editor de apps del panel.
+# DNS: crear urgenciav2 en /dns ANTES de consultar el nombre. BD: confirmar que exista en el SQL de prod.
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: urgenciav2-deployment
+  namespace: default
+  labels: { app: urgenciav2 }
+spec:
+  replicas: 1
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector: { matchLabels: { app: urgenciav2 } }
+  template:
+    metadata:
+      labels: { app: urgenciav2 }
+    spec:
+      # La app no habla con la API de Kubernetes → no montar el token del SA
+      # (si un atacante compromete el pod, no encuentra credenciales del clúster).
+      automountServiceAccountToken: false
+      # securityContext estándar de oro: no-root verificado (uid 1000 = node
+      # en la imagen), sin escalación, filesystem de solo lectura (la app solo
+      # escribe a stdout) y syscalls filtradas por seccomp.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: urgenciav2
+          image: ghcr.io/hospital-carlos-cisterna-calama/urgenciav2:v0.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          # /tmp escribible (emptyDir) por si Node o una lib necesita temporales.
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          ports: [{ containerPort: 8080, name: http }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests: { memory: 128Mi, cpu: 50m }
+            limits: { memory: 512Mi, cpu: 300m }
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: PORT, value: '8080' }
+            # ── SQL Server (keys canónicas de shared-secrets) ────────
+            - name: DB_HOST
+              valueFrom: { secretKeyRef: { name: shared-secrets, key: DB_PROD_HOST } }
+            - { name: DB_PORT, value: '1433' }
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: shared-secrets, key: DB_PROD_USER } }
+            - name: DB_PASS
+              valueFrom: { secretKeyRef: { name: shared-secrets, key: DB_PROD_PASSWORD } }
+            - { name: DB_NAME, value: BD_ENTI_CORPORATIVA }
+            # ── Auth del universo prod (ApiLogin) ─────────────────
+            - { name: API_LOGIN_URL, value: 'https://login.hospitalcalama.cl' }
+            # Nombre EXACTO del sistema en ApiLogin (case-sensitive; mismo valor
+            # que systemName del frontend) — lo usa requireRole para autorizar.
+            - { name: SISTEMA_APILOGIN, value: 'URGENCIA_NEW' }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: api-secrets, key: JWT_SECRET } }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: urgenciav2-service
+  namespace: default
+  labels: { app: urgenciav2 }
+spec:
+  selector: { app: urgenciav2 }
+  ports: [{ name: http, port: 80, targetPort: 8080 }]
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: urgenciav2-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: 'true'
+    nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+    nginx.ingress.kubernetes.io/proxy-body-size: '20m'
+spec:
+  tls:
+    - hosts: ['*.hospitalcalama.cl']
+      secretName: hcc-tls-secret
+  rules:
+    - host: urgenciav2.hospitalcalama.cl
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: urgenciav2-service
+                port: { number: 80 }

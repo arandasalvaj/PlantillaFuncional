@@ -1,0 +1,234 @@
+# ============================================================================
+# PLANTILLA — CI/CD estándar del hospital (imagen única, jul-2026)
+#
+# AL CREAR UN SISTEMA NUEVO DESDE ESTA PLANTILLA:
+#   1. Buscar y reemplazar urgenciav2 por el nombre real (minúsculas,
+#      sin espacios; ej: cobranza). Es el nombre de la imagen ghcr Y de la
+#      app en el panel (deployment = <nombre>-deployment).
+#   2. Crear las ramas: Produccion (default) y desarrollo (desde Produccion).
+#   3. Protecciones: desarrollo = PR-only 0 aprobaciones; Produccion =
+#      PR-only 1 APROBACIÓN + required check "guard-origen" (Sebastián las
+#      configura con el molde de la campaña).
+#
+# FLUJO DEL EQUIPO (obligatorio, el guard lo hace mecánico):
+#   rama feature → PR a desarrollo (squash, SIN bump)
+#     → merge = deploy automático al ns dev (<nombre>-dev)
+#     → probar en https://<nombre>-dev.hospitalcalama.cl
+#   → PR desarrollo → Produccion (MERGE COMMIT, bump adentro, 1 aprobación)
+#     → merge = deploy a producción
+#
+# Secrets: PANEL_DEPLOY_TOKEN es org-level (no configurar nada).
+# Versión: Backend/package.json (cada promoción a Produccion la bumpea).
+# ============================================================================
+name: Build & Deploy (urgenciav2)
+
+on:
+  push:
+    branches: [Produccion, desarrollo]
+    tags: ['v*']
+  pull_request:
+    # main = solo la plantilla misma (así los PRs de Dependabot corren test +
+    # security). Los sistemas nacidos usan Produccion/desarrollo y no tienen main.
+    branches: [Produccion, desarrollo, main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/hospital-carlos-cisterna-calama/urgenciav2
+  APP: urgenciav2
+
+jobs:
+  # ── TEST: corre siempre (push y PR). Gate antes de construir nada. ──────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Backend — typecheck + build + tests (tsc + pkgroll + vitest)
+        run: |
+          corepack enable
+          cd Backend
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm build
+          pnpm test
+      - name: Frontend — build (ng build)
+        # GITHUB_TOKEN: el install baja el design system PRIVADO del Frontend
+        # (@hospital-carlos-cisterna-calama/tokens); el .npmrc lo lee de este env.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd Frontend
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm run build
+
+  # ── SECURITY: VISIBLE no-bloqueante (doctrina: visibilidad, no fricción). ────
+  # Si sale rojo NO frena el merge, pero hay que MIRARLO. Cubre las deps HIGH:
+  # audita las deps de producción (pnpm audit) + Trivy vuln HIGH. El hardening
+  # (misconfig/USER no-root), los secretos y las deps CRITICAL NO viven acá:
+  # bloquean en el job `hardening-gate`. Acá el rojo es informativo (un CVE HIGH
+  # sin fix no debe trabar el deploy). El audit falla solo desde HIGH.
+  security:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: pnpm audit Backend (deps de producción)
+        run: |
+          corepack enable
+          cd Backend && pnpm audit --prod --audit-level high
+      - name: pnpm audit Frontend (deps de producción)
+        if: always()
+        run: |
+          corepack enable
+          cd Frontend && pnpm audit --prod --audit-level high
+      # Solo deps HIGH (visible). El CRITICAL, los misconfig y los secretos
+      # los cubre —y BLOQUEA— el job `hardening-gate`, así que acá no se duplican.
+      - name: Trivy — deps HIGH (visible; el gate cubre CRITICAL/misconfig/secretos)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln
+          severity: HIGH
+          exit-code: '1'
+
+  # ── HARDENING-GATE: BLOQUEANTE (frena build y deploy). ──────────────────────
+  # GATE bloqueante: hardening (misconfig/USER no-root), secretos y deps
+  # CRITICAL. Los HIGH de deps se ven en el job `security` (no bloquean).
+  # SIN continue-on-error: corre en push y PR y `build`/`deploy` lo tienen en
+  # `needs`, así que si algo acá sale rojo la imagen no se construye ni se
+  # despliega. Un error de config (securityContext/USER) siempre es arreglable;
+  # un CVE CRITICAL es riesgo grave → ambos deben frenar el deploy.
+  hardening-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # Bloquea si se rompe el securityContext/USER no-root o aparece un secreto.
+      - name: Trivy — misconfig + secretos (securityContext/USER no-root)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: misconfig,secret
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+      # Bloquea solo por vulnerabilidades CRITICAL de dependencias (las HIGH van
+      # al job `security`, visibles). always(): reporta aunque el paso previo falle.
+      - name: Trivy — deps CRITICAL (vuln)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: '1'
+
+  # ── Versión: tag de imagen + namespace según la rama. ───────────────────────
+  version:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      namespace: ${{ steps.meta.outputs.namespace }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: meta
+        run: |
+          RAMA="${GITHUB_BASE_REF:-$GITHUB_REF_NAME}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"; NS="default"
+          elif [ "${RAMA}" = "desarrollo" ]; then
+            # dev: tag inmutable por commit, SIN bump (la versión oficial
+            # vX.Y.Z nace en la promoción a Produccion).
+            TAG="dev-${GITHUB_SHA:0:7}"; NS="dev"
+          else
+            VERSION=$(jq -r .version Backend/package.json)
+            TAG="v${VERSION}"; NS="default"
+          fi
+          {
+            echo "tag=${TAG}"
+            echo "namespace=${NS}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Rama: ${RAMA} → tag ${TAG}, namespace ${NS}"
+
+  # ── BUILD: una sola imagen (Express + SPA), self-contained. ─────────────────
+  build:
+    # hardening-gate en needs: no se construye la imagen con el hardening roto.
+    needs: [version, hardening-gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # cache gha: si los lockfiles no cambian, las capas de deps se reusan
+      - name: Build & push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}:${{ needs.version.outputs.tag }}
+          provenance: false
+          build-args: |
+            APP_VERSION=${{ needs.version.outputs.tag }}
+          # BuildKit secret (id=github_token, igual que el --mount del Dockerfile):
+          # deja que el pnpm install del Frontend baje el design system PRIVADO.
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── DEPLOY: self-hosted (LAN) → rollout vía panel. ──────────────────────────
+  deploy:
+    # hardening-gate en needs: el deploy real solo ocurre con el hardening OK.
+    needs: [version, build, hardening-gate]
+    runs-on: [self-hosted]
+    steps:
+      - name: Rollout (vía panel)
+        run: |
+          TAG="${{ needs.version.outputs.tag }}"
+          NS="${{ needs.version.outputs.namespace }}"
+          # Naming estándar: en dev la app lleva el sufijo -dev.
+          if [ "${NS}" = "dev" ]; then APPX="${APP}-dev"; else APPX="${APP}"; fi
+          IMG="${IMAGE}:${TAG}"
+          echo "→ ${APPX}  ${IMG}  (ns ${NS})"
+          curl -fsSk -X POST "https://ks8.hospitalcalama.cl/api/ci/deploy" \
+            -H "Authorization: Bearer ${{ secrets.PANEL_DEPLOY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"app\":\"${APPX}\",\"image\":\"${IMG}\",\"sha\":\"${GITHUB_SHA}\",\"namespace\":\"${NS}\"}"
+          echo ""
+          echo "✅ ${APPX} ${TAG} desplegado en ${NS}."
+
+  # ── GUARD: Produccion solo acepta PRs desde desarrollo (o hotfix/*). ────────
+  guard-origen:
+    if: github.event_name == 'pull_request' && github.base_ref == 'Produccion'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validar rama de origen
+        run: |
+          ORIGEN="${GITHUB_HEAD_REF}"
+          if [ "${ORIGEN}" = "desarrollo" ]; then
+            echo "✅ Promoción desarrollo → Produccion. Recordá: merge con 'Create a merge commit' (no squash)."
+          elif [[ "${ORIGEN}" == hotfix/* ]]; then
+            echo "⚠️ HOTFIX directo a Produccion (excepción de emergencia)."
+            echo "   OBLIGATORIO tras el merge: back-merge inmediato a desarrollo (merge commit)."
+          else
+            echo "❌ Produccion solo acepta PRs desde 'desarrollo' (o 'hotfix/*' en emergencias)."
+            echo "   Flujo: rama feature → PR a desarrollo → probar en <sistema>-dev → PR desarrollo → Produccion."
+            exit 1
+          fi
